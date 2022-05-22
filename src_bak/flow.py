@@ -22,28 +22,29 @@
 #     and download the missing file(s)
 # - Map: Uses map over a list of folders to upload files from each folder in a distributed/parallel fashion
 ##############################################################################
-from functools import partial
 from pathlib import Path
-from prefect import flow
-from prefect.task_runners import DaskTaskRunner
+from prefect import Flow, Parameter
+from prefect.executors.dask import LocalDaskExecutor
+from prefect.run_configs.local import LocalRun
+from prefect.utilities.edges import unmapped
 from src.tasks import load_year_files, aws_local_folder_difference, s3_list_folders, local_list_folders
 
 
-@flow(name="NOAA files: AWS Upload", task_runner=DaskTaskRunner())
-def main():
-    working_dir = str(Path("/home/ben/github/NOAA-file-download/local_data/global-summary-of-the-day-archive/"))
-    region_name = "us-east-1"
-    bucket_name = "noaa-temperature-data"
-    chunks = 10
-    all_folders = True
+executor = LocalDaskExecutor(scheduler="threads", num_workers=4)
+with Flow(name="NOAA files: AWS Upload", executor=executor) as flow:
+    #    working_dir = Parameter('WORKING_LOCAL_DIR', default=Path('/mnt/c/Users/benha/data_downloads/noaa_global_temps'))
+    working_dir = Parameter("WORKING_LOCAL_DIR", default=str(Path("/home/ben/github/NOAA-file-download/local_data/global-summary-of-the-day-archive/")))
+    region_name = Parameter("REGION_NAME", default="us-east-1")
+    bucket_name = Parameter("BUCKET_NAME", default="noaa-temperature-data")
+    all_folders = Parameter("ALL_FOLDERS", default=True)
     t1_local_folders = local_list_folders(working_dir)
     t2_aws_folders = s3_list_folders(region_name, bucket_name)
     t3_years = aws_local_folder_difference(t2_aws_folders, t1_local_folders, all_folders)
-    for year in t3_years.result():
-        partial_year = [year[i:i + chunks] for i in range(0, len(year), chunks)]
-        for y in partial_year:
-            load_year_files(y, region_name, bucket_name, working_dir)
+    load_year_files.map(t3_years, unmapped(region_name), unmapped(bucket_name), unmapped(working_dir))
+
+flow.run_config = LocalRun(working_dir="/home/share/github/1-NOAA-Data-Download-Cleaning-Verification/")
 
 
 if __name__ == "__main__":
-    main()
+    state = flow.run()
+    assert state.is_successful()

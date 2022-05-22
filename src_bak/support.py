@@ -1,8 +1,7 @@
 from datetime import datetime
-# import logging
+import logging
 import os
 from pathlib import Path
-from prefect import get_run_logger
 import boto3
 from botocore.exceptions import ClientError
 from tqdm import tqdm
@@ -19,8 +18,6 @@ def aws_local_year_find_difference(s3_client: boto3, bucket: str, year: str, loc
 
     Return (set): Diference between AWS and Local
     """
-    upload = False
-    
     # If not exists - creates year folder in aws
     s3_client.put_object(Bucket=bucket, Body="", Key=f"{year}/")
 
@@ -34,48 +31,22 @@ def aws_local_year_find_difference(s3_client: boto3, bucket: str, year: str, loc
         file_l = [x["Key"].split("/")[1] for x in list_all_keys]
         for f in file_l:
             aws_file_set.add(f)
-    
-    # NEW
-    # find AWS version file
-    aws_version = False
-    for aws_file in aws_file_set:
-        if f"{year}_ts_" in aws_file:
-            aws_version = aws_file
-    if not aws_version:
-        upload = True
-    if aws_version:
 
-        # NEW
-        # List local files for year
-        local_file_set = set(os.listdir(str(Path(local_dir) / year / 'data')))
-        for local_file in local_file_set:
-            if f"{year}_ts_" in local_file:
-                local_version = local_file
-        if not local_version:
-            upload = True
-
-        # NEW
-        if not local_version == aws_version:
-            upload = True
+    # List local files for year
+    local_file_set = set(os.listdir(str(Path(local_dir) / year / 'data')))
+    # print(local_file_set)
 
     # if local files exist for year, but no AWS files, simply pass on set of local files to upload
     if len(local_file_set) > 1 and len(aws_file_set) == 0:
         return list(local_file_set)
 
     # List local files not yet in aws bucket/year
-    # file_difference_set = local_file_set - aws_file_set
+    file_difference_set = local_file_set - aws_file_set
 
     # Subtrack 1 from aws_file_ser, because the folder results from AWS include an empty string as one of the set items
     # print(f'{year} - DIFFERENCE: {len(file_difference_set)} (LOCAL: {len(local_file_set)} | CLOUD: {len(aws_file_set) - 1})')
-    
-    if upload:
-        file_diff_l = local_file_set
-    else:
-        file_diff_l = set()
-
     return {
-        "file_diff_l": list(file_diff_l),
-        # "file_diff_l": list(file_difference_set),
+        "file_diff_l": list(file_difference_set),
         "local_count": len(local_file_set),
         "cloud_count": len(aws_file_set) - 1,
     }
@@ -93,7 +64,6 @@ def s3_upload_file(s3_client: boto3.client, file_name, bucket, object_name=None)
     Return (bool): True if file was uploaded, else False
     """
     # If S3 object_name was not specified, use file_name
-    logger = get_run_logger()
     if object_name is None:
         object_name = file_name
 
@@ -101,8 +71,7 @@ def s3_upload_file(s3_client: boto3.client, file_name, bucket, object_name=None)
     try:
         response = s3_client.upload_file(file_name, bucket, object_name)
     except ClientError as e:
-        logger.error(e)
-        # logging.error(e)
+        logging.error(e)
         return False
     return True
 
