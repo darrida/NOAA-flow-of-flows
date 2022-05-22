@@ -14,13 +14,8 @@
 #     - Credentials: Stored localled in default user folder created by AWS CLI
 #
 # DESCRIPTION
-# - Uploads local NOAA temperature csv files to AWS S3 storage
-# - Includes the following features (to assist with handling the download of 538,000 [34gb] csv files):
-#   - Continue Downloading: If the download is interrupted, the script can pick up where it left off
-#   - Find Gaps: If an indidivual file is added to the source for any year, or removed from the server
-#     for any year, the script can quickly scan all data in both locations, find the differences
-#     and download the missing file(s)
-# - Map: Uses map over a list of folders to upload files from each folder in a distributed/parallel fashion
+# - compares version files in local year/data folder with verion files in aws S3
+# - re-uploads relevant entire year folder when version numbers are different
 ##############################################################################
 import os
 from pathlib import Path
