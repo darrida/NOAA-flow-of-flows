@@ -24,6 +24,7 @@
 ##############################################################################
 
 from datetime import datetime, timedelta
+from pprint import pprint
 import logging
 import os
 from pathlib import Path
@@ -66,7 +67,8 @@ def aws_local_year_find_difference(s3_client: boto3, bucket: str, year: str, loc
             aws_file_set.add(f)
 
     # List local files for year
-    local_file_set = set(os.listdir(str(Path(local_dir) / year)))
+    local_file_set = set(os.listdir(str(Path(local_dir) / year / 'data')))
+    # print(local_file_set)
 
     # if local files exist for year, but no AWS files, simply pass on set of local files to upload
     if len(local_file_set) > 1 and len(aws_file_set) == 0:
@@ -126,7 +128,7 @@ def aws_load_files_year(
     for csv_file in tqdm(files_l, desc=f"{year} | local: {local_count} | cloud: {cloud_count}"):
         result = s3_upload_file(
             s3_client=s3_client,
-            file_name=str(Path(local_dir) / year / csv_file),
+            file_name=str(Path(local_dir) / year / 'data' / csv_file),
             bucket=bucket,
             object_name=f"{year}/{csv_file}",
         )
@@ -222,7 +224,7 @@ def load_year_files(year: str, region_name: str, bucket_name: str, working_dir: 
 executor = LocalDaskExecutor(scheduler="threads", num_workers=4)
 with Flow(name="NOAA files: AWS Upload", executor=executor) as flow:
     #    working_dir = Parameter('WORKING_LOCAL_DIR', default=Path('/mnt/c/Users/benha/data_downloads/noaa_global_temps'))
-    working_dir = Parameter("WORKING_LOCAL_DIR", default=str(Path("./local_data/noaa_temp_downloads")))
+    working_dir = Parameter("WORKING_LOCAL_DIR", default=str(Path("/home/ben/github/NOAA-file-download/local_data/global-summary-of-the-day-archive/")))
     region_name = Parameter("REGION_NAME", default="us-east-1")
     bucket_name = Parameter("BUCKET_NAME", default="noaa-temperature-data")
     all_folders = Parameter("ALL_FOLDERS", default=True)
