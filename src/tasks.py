@@ -1,78 +1,90 @@
 import os
+from pathlib import Path
 from prefect import task, get_run_logger
-from src.support import initialize_s3_client, aws_load_files_year, aws_local_year_find_difference
+from tqdm import tqdm
+from src.support import initialize_s3_client, aws_load_files_year
 
 
 ####################
 # PREFECT WORKFLOW #
 ####################
 @task()
-def local_list_folders(working_dir: str) -> list:
-    return os.listdir(str(working_dir))
+def generate_download_list(data: list, size: int) -> list:
+    full_l = []
+    for d in data:
+        year_chunks = [d['file_list'][i:i + size] for i in range(0, len(d['file_list']), size)]
+        for chunk in year_chunks:
+            chunk = {'year': d['year'], 'file_list': chunk}
+            full_l.append(chunk)
+    
+    return full_l
 
 
 @task(retries=5, retry_delay_seconds=5)
-def s3_list_folders(region_name, bucket_name: str) -> list:
-    """List folder as root of AWS bucket
-
-    Args:
-        s3_client: initated boto3 s3_client object
-        bucket_name (str): target AWS bucket
-
-    Return (list): list with AWS bucket root folder names
-    """
+def load_year_files(data: dict, region_name: str, bucket_name: str, working_dir: str):
+    year, files_l = data['year'], data['file_list']
+    
     s3_client = initialize_s3_client(region_name)
-    response = s3_client.list_objects_v2(Bucket=bucket_name, Prefix="", Delimiter="/")
-
-    def yield_folders(response):
-        for content in response.get("CommonPrefixes", []):
-            yield content.get("Prefix")
-
-    folder_list = yield_folders(response)
-    # remove '/' from end of each folder name
-    return [x.split("/")[0] for x in folder_list]
-
-
-@task(retries=5, retry_delay_seconds=5)
-def aws_local_folder_difference(aws_year_folders: list, local_year_folders: list, all: bool = False) -> set:
-    """Finds year folders not yet in AWS
-
-    - Finds folders not yet in AWS
-    - Sorts and finds the lowest folder number, then adds a year folder below that number
-      - This is to ensure that highest year in AWS is double check if it uploaded all files for it
-
-    Args:
-        aws_year_folders (list): year folders present in AWS bucket
-        local_year_folders (list): year folders present in local dir
-
-    Return (set): set of folders not in AWS + the year below lowest year
-    """
-    if all:
-        return sorted(set(local_year_folders))
-    difference_set = sorted(set(aws_year_folders) - set(local_year_folders))
-    difference_set.append(str(int(difference_set[0]) - 1))
-    return sorted(difference_set)
-
-
-@task()
-def load_year_files(year: str, region_name: str, bucket_name: str, working_dir: str):
-    s3_client = initialize_s3_client(region_name)
-
     # If not exists - creates year folder in aws
     s3_client.put_object(Bucket=bucket_name, Body="", Key=f"{year}/")
 
-    file_diffs = aws_local_year_find_difference(
-        s3_client=s3_client, bucket=bucket_name, year=year, local_dir=working_dir
-    )
-    if file_diffs["file_diff_l"]:
+    if year:
         success, failed = aws_load_files_year(
             s3_client=s3_client,
             bucket=bucket_name,
             year=year,
             local_dir=working_dir,
-            files_l=file_diffs["file_diff_l"],
-            local_count=file_diffs["local_count"],
-            cloud_count=file_diffs["cloud_count"],
+            files_l=files_l,
         )
         print(f"{year} success: {success}, failed: {failed}")
-    # return True
+
+
+@task()
+def flag_updates(bucket: str, years: list, local_dir: str, region_name: str, all: bool) -> dict:
+    """Takes individual year and finds file difference between AWS and Local
+
+    Args:
+        s3_client: initated boto3 s3_client object
+        bucket (str): target AWS bucket
+        year (str): year to check difference for
+        local_dir (str): local directory with year folders
+
+    Return (set): Diference between AWS and Local
+    """  
+    if not all:
+        years.sort()
+        years = years[-1]
+        print(f"ONLY Check for updates to {year} data")
+
+    update_l = []
+    for year in tqdm(years):
+        s3_client = initialize_s3_client(region_name)
+        # If not exists - creates year folder in aws
+        s3_client.put_object(Bucket=bucket, Body="", Key=f"{year}/")
+
+        # File difference between local and aws for indidivual folder/year
+        aws_file_set = set()
+        paginator = s3_client.get_paginator("list_objects_v2")
+        pages = paginator.paginate(Bucket=bucket, Prefix=year)
+        for page in pages:
+            list_all_keys = page["Contents"]
+            # item arrives in format of 'year/filename'; this removes 'year/'
+            file_l = [x["Key"].split("/")[1] for x in list_all_keys]
+            for f in file_l:
+                aws_file_set.add(f)
+
+        # find AWS version file
+        aws_version = [x for x in aws_file_set if f"{year}_ts_" in x]
+
+        # find local version file
+        local_file_set = set(os.listdir(str(Path(local_dir) / year / 'data')))
+        local_version = [x for x in local_file_set if f"{year}_ts_" in x]
+
+        if not local_version:
+            raise Exception(f"No LOCAL version of {year} found")
+
+        if not local_version == aws_version:
+            print('UPDATE', year)
+            update_l.append({'year': year, 'file_list': list(local_file_set)})
+
+    return update_l

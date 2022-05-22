@@ -22,11 +22,11 @@
 #     and download the missing file(s)
 # - Map: Uses map over a list of folders to upload files from each folder in a distributed/parallel fashion
 ##############################################################################
-from functools import partial
+import os
 from pathlib import Path
 from prefect import flow
 from prefect.task_runners import DaskTaskRunner
-from src.tasks import load_year_files, aws_local_folder_difference, s3_list_folders, local_list_folders
+from src.tasks import load_year_files, flag_updates, generate_download_list
 
 
 @flow(name="NOAA files: AWS Upload", task_runner=DaskTaskRunner())
@@ -34,15 +34,14 @@ def main():
     working_dir = str(Path("/home/ben/github/NOAA-file-download/local_data/global-summary-of-the-day-archive/"))
     region_name = "us-east-1"
     bucket_name = "noaa-temperature-data"
-    chunks = 10
+    chunks = 200
     all_folders = True
-    t1_local_folders = local_list_folders(working_dir)
-    t2_aws_folders = s3_list_folders(region_name, bucket_name)
-    t3_years = aws_local_folder_difference(t2_aws_folders, t1_local_folders, all_folders)
-    for year in t3_years.result():
-        partial_year = [year[i:i + chunks] for i in range(0, len(year), chunks)]
-        for y in partial_year:
-            load_year_files(y, region_name, bucket_name, working_dir)
+    
+    folder_list = os.listdir(str(working_dir))
+    updates_l = flag_updates(bucket_name, folder_list, working_dir, region_name, all_folders)
+    download_l = generate_download_list(updates_l, chunks)
+    for data in download_l.wait().result():
+        load_year_files(data, region_name, bucket_name, working_dir)
 
 
 if __name__ == "__main__":
