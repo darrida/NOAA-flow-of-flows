@@ -1,6 +1,6 @@
 [tool.poetry]
-name = "noaa-temp-s3-upload"
-version = "2022.01.24"
+name = "src"
+version = "2022.05.22"
 description = "Series of Python tools that download 100s of 1000s of CSVs from NOAA, clean the data, load into PostGIS"
 authors = ["darrida <darrida.py@gmail.com>"]
 
