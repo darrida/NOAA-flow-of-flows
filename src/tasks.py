@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from prefect import task, get_run_logger
 from tqdm import tqdm
+import pandas as pd
 from src.support import initialize_s3_client, aws_load_files_year
 
 
@@ -9,7 +10,7 @@ from src.support import initialize_s3_client, aws_load_files_year
 # PREFECT WORKFLOW #
 ####################
 @task()
-def generate_download_list(data: list, size: int) -> list:
+def generate_upload_list(data: list, size: int) -> list:
     full_l = []
     for d in data:
         year_chunks = [d['file_list'][i:i + size] for i in range(0, len(d['file_list']), size)]
@@ -18,6 +19,16 @@ def generate_download_list(data: list, size: int) -> list:
             full_l.append(chunk)
     
     return full_l
+
+
+@task()
+def merge_files(files_l, year, working_dir):
+    year_df = pd.read_csv(Path(working_dir) / year / 'data' / files_l[0])
+    for file_ in files_l[1:]:
+        single_df = pd.read_csv(Path(working_dir) / year / 'data' / file_)
+        year_df.append(single_df)
+    year_df.to_csv(Path(working_dir) / year / 'data' / f"{year}_full.csv", index=False)
+
 
 
 @task(retries=5, retry_delay_seconds=5)
