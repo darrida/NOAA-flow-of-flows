@@ -80,6 +80,10 @@ def flag_updates(bucket: str, local_dir: str, region_name: str, all: bool) -> di
 
 @task(retries=3, retry_delay_seconds=5)
 def cleanup_confirm_files(bucket_name, region_name, local_dir):
+    # TODO: To cover all angles, this could query the S3 bucket and see if multiple ___complete files for each
+    #       year exists there as well. In the current state, this will only clean up files based on what is
+    #       stored locally.
+
     logger = get_run_logger()
     
     s3_client = initialize_s3_client(region_name)
