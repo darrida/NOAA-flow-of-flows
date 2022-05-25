@@ -91,7 +91,8 @@ def cleanup_confirm_files(bucket_name, region_name, local_dir):
     local_files = glob.glob(f"{local_dir}/**/*___complete", recursive=True)
 
     for file_ in local_files:
-        data_d[Path(file_).name[:4]].append(file_)
+        year = Path(file_).name[:4]
+        data_d[year].append(file_)
 
     count = 0
     for key, files in data_d.items():
