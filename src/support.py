@@ -3,14 +3,13 @@ from pathlib import Path
 from prefect import get_run_logger
 import boto3
 from botocore.exceptions import ClientError
-from tqdm import tqdm
 
 
 def initialize_s3_client(region_name: str) -> boto3.client:
     return boto3.client("s3", region_name=region_name)
 
 
-def aws_load_files_year(s3_client: boto3.client, bucket: str, year: str, local_dir: str, files_l: list) -> int:
+def aws_load_files_year(s3_client: boto3.client, bucket: str, filepaths_l: list) -> int:
     """Loads set of csv files into aws
 
     Args:
@@ -22,23 +21,38 @@ def aws_load_files_year(s3_client: boto3.client, bucket: str, year: str, local_d
 
     Return (tuple): Number of upload success (index 0) and failures (index 1)
     """
+    logger = get_run_logger()
     upload_count, failed_count = 0, 0
-    for csv_file in tqdm(files_l, desc=f"{year} | Total: {len(files_l)}"):
-        result = s3_upload_file(
+    for year in filepaths_l:
+        csv_dir = Path(year).parent
+        csv_filename = f"{Path(year).name[:4]}_full.csv"
+        result_complete = None
+        logger.info(f"BEGIN Upload Data: {csv_filename}")
+        result_csv = s3_upload_file(
             s3_client=s3_client,
-            file_name=str(Path(local_dir) / year / 'data' / csv_file),
+            file_name=str(csv_dir / csv_filename),
             bucket=bucket,
-            object_name=f"{year}/{csv_file}",
+            object_name=f"data/{csv_filename}",
         )
-        if not result:
+        confirm_filename = Path(year).name
+        if result_csv:
+            logger.info(f"COMPLETE Upload Data: {csv_filename}")
+            logger.info(f"BEGIN Upload Confirmation: {confirm_filename}")
+            result_complete = s3_upload_file(
+                s3_client=s3_client,
+                file_name=str(year),
+                bucket=bucket,
+                object_name=f"data/{confirm_filename}",
+            )
+        if not result_complete:
             with open("failed.txt", "a") as f:
-                f.write(f"{year} | {csv_file} | {datetime.now()}")
+                f.write(f'{csv_dir / csv_filename}" | {datetime.now()}')
                 f.write("\n")
             failed_count += 1
             continue
+        logger.info(f"COMPLETE Upload Confirmation: {confirm_filename}")
         upload_count += 1
     return upload_count, failed_count
-
 
 
 def s3_upload_file(s3_client: boto3.client, file_name, bucket, object_name=None):
