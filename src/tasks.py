@@ -8,6 +8,13 @@ from src.support import initialize_s3_client, aws_load_files_year
 
 @task(retries=5, retry_delay_seconds=5)
 def load_year_files(data: dict, region_name: str, bucket_name: str):   
+    """Loads Archive File to S3
+    
+    Args:
+        data: <work this out>
+        region_name (str): target s3 region
+        bucket_name (str): target s3 bucket
+    """
     s3_client = initialize_s3_client(region_name)
     # If not exists - creates year folder in aws
     s3_client.put_object(Bucket=bucket_name, Body="", Key=f"data/")
@@ -81,6 +88,14 @@ def flag_updates(bucket: str, local_dir: str, region_name: str, all: bool) -> di
 
 @task(retries=3, retry_delay_seconds=5)
 def cleanup_confirm_files(bucket_name, region_name, local_dir):
+    """Removes All But Most Recent Confirm File from S3
+    
+    Args:
+        bucket_name (str): target S3 bucket
+        region_name (str): target S3 region (used to initialize client)
+        local_dir (str): local directory where year archives are stored
+    
+    """
     # TODO: To cover all angles, this could query the S3 bucket and see if multiple ___complete files for each
     #       year exists there as well. In the current state, this will only clean up files based on what is
     #       stored locally.
