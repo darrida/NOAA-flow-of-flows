@@ -26,12 +26,13 @@ def flag_updates(bucket: str, local_dir: str, region_name: str, all: bool) -> di
     """Takes individual year and finds file difference between AWS and Local
 
     Args:
-        s3_client: initated boto3 s3_client object
         bucket (str): target AWS bucket
-        year (str): year to check difference for
         local_dir (str): local directory with year folders
+        region_name (str): AWS region used for s3_client connection
+        all (bool): <I think this isn't used now>
 
-    Return (set): Diference between AWS and Local
+    Return
+        set: Diference between AWS and Local
     """  
     logger = get_run_logger()
     

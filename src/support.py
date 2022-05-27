@@ -13,11 +13,9 @@ def aws_load_files_year(s3_client: boto3.client, bucket: str, filepaths_l: list)
     """Loads set of csv files into aws
 
     Args:
-        s3_client: initated boto3 s3_client object
+        s3_client: initialized boto3 s3_client object
         bucket (str): target AWS bucket
-        year (str): year to check difference for
-        local_dir (str): local directory with year folders
-        files (list): filenames to upload
+        filepaths_l (List[str]): list of full filepaths of year archives for upload
 
     Return (tuple): Number of upload success (index 0) and failures (index 1)
     """
