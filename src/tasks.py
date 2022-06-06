@@ -1,9 +1,8 @@
 import glob
-from pprint import pprint
 from collections import defaultdict
 from pathlib import Path
 from prefect import task, get_run_logger
-from src.support import initialize_s3_client, aws_load_files_year
+from src.support import initialize_s3_client, aws_load_files_year, local_clean_confirm_files, s3_clean_confirmation_files
 
 
 @task(retries=5, retry_delay_seconds=5)
@@ -15,6 +14,7 @@ def load_year_files(data: dict, region_name: str, bucket_name: str):
         region_name (str): target s3 region
         bucket_name (str): target s3 bucket
     """
+    logger = get_run_logger()
     s3_client = initialize_s3_client(region_name)
     # If not exists - creates year folder in aws
     s3_client.put_object(Bucket=bucket_name, Body="", Key=f"data/")
@@ -25,7 +25,7 @@ def load_year_files(data: dict, region_name: str, bucket_name: str):
         filepaths_l=data,
     )
     year = str(Path(data[0]).name)[:4]
-    print(f"{year} | success: {success}, failed: {failed}")
+    logger.info(f"{year} | success: {success}, failed: {failed}")
 
 
 @task()
@@ -46,7 +46,7 @@ def flag_updates(bucket: str, local_dir: str, region_name: str, all: bool) -> di
     if not all:
         years.sort()
         years = years[-1]
-        print(f"ONLY Check for updates to {years} related data")
+        logger.info(f"ONLY Check for updates to {years} related data")
 
     update_l = []
 
@@ -79,9 +79,10 @@ def flag_updates(bucket: str, local_dir: str, region_name: str, all: bool) -> di
     logger.info(update_l)
 
     upload_l = []
-    parent_dir = Path(local_files[0]).parent.parent
+    logger.info('local_dir: ' + local_dir)
+    # parent_dir = Path(local_files[0]).parent.parent
     for u in update_l:
-        upload_l.append(Path(parent_dir) / u[:4] / u)
+        upload_l.append(Path(local_dir) / u[:4] / u)
 
     return upload_l
 
@@ -103,21 +104,7 @@ def cleanup_confirm_files(bucket_name, region_name, local_dir):
     logger = get_run_logger()
     
     s3_client = initialize_s3_client(region_name)
-    data_d = defaultdict(list)
-    local_files = glob.glob(f"{local_dir}/**/*___complete", recursive=True)
-
-    for file_ in local_files:
-        year = Path(file_).name[:4]
-        data_d[year].append(file_)
-
-    count = 0
-    for key, files in data_d.items():
-        if len(files) > 1:  # if multiple status files
-            files = sorted(files)
-            files = files[:-1]  # remove newer file from delete list
-            for f in files:
-                s3_client.delete_object(Bucket=bucket_name, Key=f"data/{Path(f).name}")
-                if Path(f).exists():
-                    Path(f).unlink()
-                count += 1
-    logger.info(f"Cleaned up {count} old '___complete' files.")
+    local_count = local_clean_confirm_files(local_dir)
+    s3_count = s3_clean_confirmation_files(s3_client, bucket_name)
+    logger.info(f"Cleaned up {local_count} old LOCAL '___complete' files.")
+    logger.info(f"Cleaned up {s3_count} old AWS S3 '___complete' files.")
